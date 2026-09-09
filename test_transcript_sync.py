@@ -576,6 +576,7 @@ def test_chat_request_rendering() -> None:
         "Next steps:\nSynthetic next step",
         "source": "panopticon",
         "sender": "panopticon",
+        "async": True,
     }
 
 

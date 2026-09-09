@@ -46,7 +46,7 @@ SECTION_KEYS = {
     "next steps": "next_steps",
 }
 TranscriptPayload = dict[str, str | list[dict[str, str]]]
-ChatRequest = dict[str, str]
+ChatRequest = dict[str, str | bool]
 CHAT_INTRODUCTION = "Here is the data that was parsed from a recent meeting:"
 
 
@@ -460,6 +460,7 @@ def chat_request(payload: TranscriptPayload) -> ChatRequest:
         ),
         "source": "panopticon",
         "sender": "panopticon",
+        "async": True,
     }
 
 
