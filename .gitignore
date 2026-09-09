@@ -1,0 +1,19 @@
+# Local environment and credentials.
+.env
+.envrc
+.env.*
+!.env.example
+credentials.json
+client_secret.json
+token.json
+google_oauth_token.json
+oauth_token.json
+oauth2_token.json
+
+# Local planning records and tool caches.
+.tickets/
+__pycache__/
+*.pyc
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
