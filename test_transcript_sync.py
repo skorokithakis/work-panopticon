@@ -254,7 +254,11 @@ def synchronize_with_response(
             )
         )
         stack.enter_context(
-            patch.object(transcript_sync, "fetch_document", return_value={})
+            patch.object(
+                transcript_sync,
+                "fetch_document",
+                return_value={"title": "Synthetic meeting"},
+            )
         )
         stack.enter_context(
             patch.object(transcript_sync, "extract_sections", return_value=payload())
@@ -390,8 +394,9 @@ def test_extraction_regressions() -> None:
         .get("content")
         != "Decisions\n"
     ]
-    with unittest.TestCase().assertRaisesRegex(RuntimeError, "decisions heading"):
-        transcript_sync.extract_sections(missing_decisions_document)
+    assert (
+        transcript_sync.extract_sections(missing_decisions_document)["decisions"] == ""
+    )
 
     duplicate_decisions_document = copy.deepcopy(document)
     duplicate_decisions_content = duplicate_decisions_document["tabs"][0]["childTabs"][
@@ -437,14 +442,20 @@ def test_synchronize_delivery_order() -> None:
     )
     assert failed_mailbox.seen_message_identifiers == []
     assert failed_opener.events == ["post"]
-    assert failed_output == "Processing 2026-01-01: Synthetic meeting\n"
+    assert failed_output == (
+        "Processing 'Synthetic meeting' (synthetic-document)\n"
+        "Processing 2026-01-01: Synthetic meeting\n"
+    )
 
     redirected_mailbox, redirected_opener, _, redirected_output, redirect_handler = (
         synchronize_with_response(302, True, [b"1"])
     )
     assert redirected_mailbox.seen_message_identifiers == []
     assert redirected_opener.events == ["post"]
-    assert redirected_output == "Processing 2026-01-01: Synthetic meeting\n"
+    assert redirected_output == (
+        "Processing 'Synthetic meeting' (synthetic-document)\n"
+        "Processing 2026-01-01: Synthetic meeting\n"
+    )
     assert isinstance(redirect_handler, transcript_sync.NoRedirect)
     # The annotation is not enforced at runtime, and FakeOpener never exercises
     # NoRedirect, so this is the only check that a POST is not replayed at a
@@ -469,7 +480,9 @@ def test_synchronize_delivery_order() -> None:
     assert opener.events == ["post", "seen", "post", "seen"]
     assert mailbox.did_logout is True
     assert output == (
+        "Processing 'Synthetic meeting' (synthetic-document)\n"
         "Processing 2026-01-01: Synthetic meeting\n"
+        "Processing 'Synthetic meeting' (synthetic-document)\n"
         "Processing 2026-01-01: Synthetic meeting\n"
         "Done.\n"
     )
@@ -484,7 +497,8 @@ def test_synchronize_delivery_order() -> None:
 def test_synchronize_leaves_invalid_documents_unread() -> None:
     events: list[str] = []
     mailbox = FakeMailbox(events)
-    output = StringIO()
+    invalid_title_document = example_document()
+    invalid_title_document["title"] = ""
     with ExitStack() as stack:
         stack.enter_context(
             patch.object(transcript_sync, "connect_mailbox", return_value=mailbox)
@@ -508,22 +522,19 @@ def test_synchronize_leaves_invalid_documents_unread() -> None:
             )
         )
         stack.enter_context(
-            patch.object(transcript_sync, "fetch_document", return_value={})
-        )
-        stack.enter_context(
             patch.object(
                 transcript_sync,
-                "extract_sections",
-                side_effect=RuntimeError("Missing or invalid date element"),
+                "fetch_document",
+                return_value=invalid_title_document,
             )
         )
-        with redirect_stdout(output):
-            with unittest.TestCase().assertRaisesRegex(RuntimeError, "date element"):
-                transcript_sync.synchronize("Synthetic folder")
+        print_mock = stack.enter_context(patch("builtins.print"))
+        with unittest.TestCase().assertRaisesRegex(RuntimeError, "document title"):
+            transcript_sync.synchronize("Synthetic folder")
 
     assert mailbox.seen_message_identifiers == []
     assert events == []
-    assert output.getvalue() == ""
+    print_mock.assert_called_once_with("Processing '' (synthetic-document)", flush=True)
 
 
 def test_preview_is_read_only_and_prints_json() -> None:
@@ -680,7 +691,11 @@ def test_dry_run_is_read_only_and_needs_no_endpoint_configuration() -> None:
             )
         )
         stack.enter_context(
-            patch.object(transcript_sync, "fetch_document", return_value={})
+            patch.object(
+                transcript_sync,
+                "fetch_document",
+                return_value={"title": "Synthetic meeting"},
+            )
         )
         stack.enter_context(
             patch.object(transcript_sync, "extract_sections", return_value=payload())
@@ -698,7 +713,12 @@ def test_dry_run_is_read_only_and_needs_no_endpoint_configuration() -> None:
     assert events == []
     post_payload_mock.assert_not_called()
     message = transcript_sync.chat_request(payload())["message"]
-    assert output.getvalue() == f"{message}\n---\n{message}\nDone.\n"
+    assert output.getvalue() == (
+        "Processing 'Synthetic meeting' (synthetic-document)\n"
+        f"{message}\n"
+        "Processing 'Synthetic meeting' (synthetic-document)\n"
+        f"---\n{message}\nDone.\n"
+    )
 
 
 def test_dry_run_failure_leaves_messages_unread() -> None:
@@ -727,7 +747,11 @@ def test_dry_run_failure_leaves_messages_unread() -> None:
             )
         )
         stack.enter_context(
-            patch.object(transcript_sync, "fetch_document", return_value={})
+            patch.object(
+                transcript_sync,
+                "fetch_document",
+                return_value={"title": "Example meeting"},
+            )
         )
         stack.enter_context(
             patch.object(
@@ -736,12 +760,16 @@ def test_dry_run_failure_leaves_messages_unread() -> None:
                 side_effect=RuntimeError("Missing or invalid date element"),
             )
         )
+        print_mock = stack.enter_context(patch("builtins.print"))
         with unittest.TestCase().assertRaisesRegex(RuntimeError, "date element"):
             transcript_sync.synchronize("Synthetic folder", dry_run=True)
 
     assert mailbox.is_readonly is True
     assert mailbox.seen_message_identifiers == []
     assert events == []
+    print_mock.assert_called_once_with(
+        "Processing 'Example meeting' (synthetic-document)", flush=True
+    )
 
 
 def test_empty_mailbox_finishes_without_google_credentials() -> None:

@@ -440,7 +440,9 @@ def extract_sections(document: dict[str, object]) -> TranscriptPayload:
         )
 
     for section_key, heading_indices in section_heading_indices.items():
-        if len(heading_indices) != 1:
+        if section_key != "decisions" and len(heading_indices) != 1:
+            raise RuntimeError(f"Expected exactly one {section_key} heading")
+        if section_key == "decisions" and len(heading_indices) > 1:
             raise RuntimeError(f"Expected exactly one {section_key} heading")
 
     sections: TranscriptPayload = {
@@ -449,6 +451,9 @@ def extract_sections(document: dict[str, object]) -> TranscriptPayload:
         "invitees": extract_invitees(summary_tab_paragraphs),
     }
     for section_key, heading_indices in section_heading_indices.items():
+        if not heading_indices:
+            sections[section_key] = ""
+            continue
         paragraph_index, section_heading_level = heading_indices[0]
         sections[section_key] = section_text(
             summary_tab_paragraphs, paragraph_index, section_heading_level
@@ -534,6 +539,10 @@ def synchronize(folder_name: str, dry_run: bool = False) -> None:
             message = fetch_message(mailbox, message_identifier)
             document_identifier = first_document_identifier(message)
             document = fetch_document(documents_service, document_identifier)
+            print(
+                f"Processing {document.get('title')!r} ({document_identifier})",
+                flush=True,
+            )
             extracted_sections = extract_sections(document)
             request_payload = chat_request(extracted_sections)
             if dry_run:

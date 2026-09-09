@@ -14,12 +14,13 @@ including nested tabs, but accepts a document only when exactly one tab contains
 - Exactly one Google Docs date element, which becomes the meeting date.
 - Exactly one non-bulleted, normal-text paragraph containing the invitees as Google
   Docs person chips. Every chip must have a name and email address.
-- Exactly one heading each named `Summary`, `Decisions`, and `Next Steps`.
+- Exactly one heading each named `Summary` and `Next Steps`, and at most one named
+  `Decisions`.
 
 Headings are matched case-insensitively and tolerate trailing punctuation. Content
 under a section continues until the next heading at the same or higher level.
-Sections may be empty. Documents that do not meet this format are rejected rather
-than guessed at.
+Sections may be empty. `Decisions` may also be omitted and is sent as an empty
+section. Documents that do not meet this format are rejected rather than guessed at.
 
 ## Requirements and Google setup
 
@@ -99,13 +100,15 @@ need no OAuth variables. Only `authorize` reads them. Unattended runs need neith
 `preview` reads the newest message in the label and prints extracted document JSON.
 It does not post data or change mailbox flags.
 
-`sync --dry-run` reads every unread message and prints the exact rendered chat
-content for each one, separated by `---`. It does not post data or change mailbox
-flags, and does not require endpoint configuration.
+`sync --dry-run` reads every unread message and logs `Processing <title repr>
+(<identifier>)` immediately after fetching each document, then prints the exact
+rendered chat content for each one, separated by `---`. It does not post data or
+change mailbox flags, and does not require endpoint configuration.
 
-`sync` reads unread messages oldest first, logs `Processing <date>: <title>` before
-each submission, posts the rendered content, then marks that message as read. No
-`--push` flag is needed.
+`sync` reads unread messages oldest first and logs `Processing <title repr>
+(<identifier>)` immediately after fetching each document. It keeps the existing
+`Processing <date>: <title>` log before each submission, posts the rendered content,
+then marks that message as read. No `--push` flag is needed.
 
 Both `sync` forms print `Done.` when they finish, including when there was nothing
 unread. A log that ends without it means the run died partway.
