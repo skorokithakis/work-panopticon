@@ -446,6 +446,20 @@ def test_synchronize_delivery_order() -> None:
     assert redirected_opener.events == ["post"]
     assert redirected_output == "Processing 2026-01-01: Synthetic meeting\n"
     assert isinstance(redirect_handler, transcript_sync.NoRedirect)
+    # The annotation is not enforced at runtime, and FakeOpener never exercises
+    # NoRedirect, so this is the only check that a POST is not replayed at a
+    # redirect target.
+    assert (
+        redirect_handler.redirect_request(  # type: ignore[func-returns-value]
+            Request("https://example.test"),
+            object(),
+            302,
+            "Found",
+            object(),
+            "https://other.example.test",
+        )
+        is None
+    )
 
     mailbox, opener, request, output, _ = synchronize_with_response(
         202, False, [b"12", b"3"]
