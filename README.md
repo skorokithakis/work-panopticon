@@ -30,8 +30,9 @@ than guessed at.
   credentials for the installed-app flow. Set the client ID and client secret
   below.
 
-On the first run, the script opens a local browser-based OAuth flow. Sign in with a
-Google account that can access the linked documents. The script requests the
+Run the `authorize` command interactively on a machine with a browser, then sign in
+with a Google account that can access the linked documents. This is the only command
+that opens a local browser-based OAuth flow. The script requests the
 `https://www.googleapis.com/auth/documents.readonly` scope, which can read all
 Google Docs accessible to that signed-in account; it is not limited to documents
 linked by Gmail.
@@ -56,10 +57,10 @@ Set these environment variables before running the script:
 
 | Variable | Required for | Description |
 | --- | --- | --- |
-| `GMAIL_ADDRESS` | All commands | Gmail address used for IMAP login. |
-| `GMAIL_APP_PASSWORD` | All commands | Gmail app password used for IMAP login. |
-| `GOOGLE_OAUTH_CLIENT_ID` | Initial authorization or an unusable cache | OAuth client ID. |
-| `GOOGLE_OAUTH_CLIENT_SECRET` | Initial authorization or an unusable cache | OAuth client secret. |
+| `GMAIL_ADDRESS` | `preview` and `sync` | Gmail address used for IMAP login. |
+| `GMAIL_APP_PASSWORD` | `preview` and `sync` | Gmail app password used for IMAP login. |
+| `GOOGLE_OAUTH_CLIENT_ID` | `authorize` | OAuth client ID. |
+| `GOOGLE_OAUTH_CLIENT_SECRET` | `authorize` | OAuth client secret. |
 | `GOOGLE_OAUTH_TOKEN_CACHE_PATH` | Optional | Overrides the token-cache path shown above. |
 | `STAVROBOT_BASE_URL` | `sync` only | Base URL; Panopticon posts to its `/chat` path. |
 | `TRANSCRIPT_ENDPOINT_TOKEN` | Optional | Bearer token for the chat endpoint. |
@@ -81,10 +82,19 @@ that configuration.
 Replace `<gmail-label>` with the Gmail label or folder to read.
 
 ```sh
+uv run --script transcript_sync.py authorize
 uv run --script transcript_sync.py preview '<gmail-label>'
 uv run --script transcript_sync.py sync --dry-run '<gmail-label>'
 uv run --script transcript_sync.py sync '<gmail-label>'
 ```
+
+`authorize` takes no folder argument and prints the token-cache path. It opens the
+browser-based OAuth flow only when the cache is missing or unusable, so it is safe to
+repeat. Run it before `preview` or `sync`; those commands refuse interactive
+authorization and fail instead.
+
+The token cache holds its own copy of the client ID and client secret, so refreshes
+need no OAuth variables. Only `authorize` reads them. Unattended runs need neither.
 
 `preview` reads the newest message in the label and prints extracted document JSON.
 It does not post data or change mailbox flags.
@@ -111,15 +121,15 @@ running; mailbox changes can alter those sequence numbers.
 
 ### Local hourly cron
 
-Complete the browser OAuth flow interactively first so cron can reuse a persistent
-token cache outside the checkout. Cron does not load shell startup files or
-`.envrc`, so provide the variables through a secure wrapper or the cron environment.
+Run `transcript_sync.py authorize` interactively first with the persistent token
+cache outside the checkout that cron will use. Cron does not load shell startup files
+or `.envrc`, so provide the variables through a secure wrapper or the cron environment.
 
 This is a template for `crontab -e`; replace every placeholder and keep real values
 out of the repository:
 
 ```
-0 * * * * GMAIL_ADDRESS='<gmail-address>' GMAIL_APP_PASSWORD='<gmail-app-password>' GOOGLE_OAUTH_CLIENT_ID='<oauth-client-id>' GOOGLE_OAUTH_CLIENT_SECRET='<oauth-client-secret>' GOOGLE_OAUTH_TOKEN_CACHE_PATH='<persistent-cache-path>' STAVROBOT_BASE_URL='<endpoint-base-url>' TRANSCRIPT_ENDPOINT_TOKEN='<bearer-token-or-omit>' <repository-path>/transcript_sync.py sync '<gmail-label>' >> <log-path> 2>&1
+0 * * * * GMAIL_ADDRESS='<gmail-address>' GMAIL_APP_PASSWORD='<gmail-app-password>' GOOGLE_OAUTH_TOKEN_CACHE_PATH='<persistent-cache-path>' STAVROBOT_BASE_URL='<endpoint-base-url>' TRANSCRIPT_ENDPOINT_TOKEN='<bearer-token-or-omit>' <repository-path>/transcript_sync.py sync '<gmail-label>' >> <log-path> 2>&1
 ```
 
 When using HTTP Basic authentication in the endpoint URL, omit
@@ -136,9 +146,9 @@ runner, configure it with an hourly `0 * * * *` schedule and this command:
 
 Store the required environment variables in that service's secret store. Give the
 runner a persistent cache location outside its checkout, such as
-`<persistent-cache-path>`, and complete OAuth there interactively before scheduling
-unattended runs. A push flag is not needed: the runner only needs to execute the
-checked-out script.
+`<persistent-cache-path>`, and run `transcript_sync.py authorize` interactively with
+that cache before scheduling unattended runs. A push flag is not needed: the runner
+only needs to execute the checked-out script.
 
 ## Tests
 

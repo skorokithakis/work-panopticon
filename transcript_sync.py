@@ -6,10 +6,11 @@
 #   "google-auth-oauthlib",
 # ]
 # ///
-# Export GMAIL_ADDRESS, GMAIL_APP_PASSWORD, GOOGLE_OAUTH_CLIENT_ID, and
-# GOOGLE_OAUTH_CLIENT_SECRET before running this. Only non-dry-run sync requires
-# STAVROBOT_BASE_URL; dry runs need no endpoint configuration.
-# Optionally set GOOGLE_OAUTH_TOKEN_CACHE_PATH and
+# Export GMAIL_ADDRESS and GMAIL_APP_PASSWORD before preview or sync. Export
+# GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET before authorize; the
+# token cache carries its own copy of both, so refreshes do not need them.
+# Only non-dry-run sync requires STAVROBOT_BASE_URL; dry runs need no endpoint
+# configuration. Optionally set GOOGLE_OAUTH_TOKEN_CACHE_PATH and
 # TRANSCRIPT_ENDPOINT_TOKEN.
 
 import argparse
@@ -133,16 +134,20 @@ def first_document_identifier(message: Message) -> str:
     raise RuntimeError("No linked transcript document found")
 
 
-def authenticate() -> Credentials:
+def oauth_token_cache_path() -> Path:
     default_config_directory = Path(
         os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")
     )
-    token_cache_path = Path(
+    return Path(
         os.environ.get(
             "GOOGLE_OAUTH_TOKEN_CACHE_PATH",
             default_config_directory / "panopticon" / "google_oauth_token.json",
         )
     )
+
+
+def authenticate(allow_interactive: bool = False) -> Credentials:
+    token_cache_path = oauth_token_cache_path()
     credentials: Credentials | None = None
     if token_cache_path.exists():
         credentials = Credentials.from_authorized_user_file(
@@ -157,6 +162,11 @@ def authenticate() -> Credentials:
         ):
             credentials.refresh(GoogleRequest())
         else:
+            if not allow_interactive:
+                raise RuntimeError(
+                    f"Google OAuth token cache is missing or unusable at {token_cache_path}; "
+                    "run `transcript_sync.py authorize` before running preview or sync"
+                )
             authorization_flow = InstalledAppFlow.from_client_config(
                 {
                     "installed": {
@@ -179,6 +189,12 @@ def authenticate() -> Credentials:
             token_cache.write(credentials.to_json())
 
     return credentials
+
+
+def authorize() -> None:
+    token_cache_path = oauth_token_cache_path()
+    authenticate(allow_interactive=True)
+    print(token_cache_path)
 
 
 def create_documents_service() -> Resource:
@@ -529,6 +545,7 @@ def command_arguments() -> argparse.Namespace:
     sync_parser = subparsers.add_parser("sync")
     sync_parser.add_argument("--dry-run", action="store_true")
     sync_parser.add_argument("folder")
+    subparsers.add_parser("authorize")
     return parser.parse_args()
 
 
@@ -536,8 +553,10 @@ def main() -> None:
     arguments = command_arguments()
     if arguments.command == "preview":
         preview(arguments.folder)
-    else:
+    elif arguments.command == "sync":
         synchronize(arguments.folder, dry_run=arguments.dry_run)
+    elif arguments.command == "authorize":
+        authorize()
 
 
 if __name__ == "__main__":

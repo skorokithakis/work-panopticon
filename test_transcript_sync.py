@@ -13,7 +13,9 @@ from contextlib import ExitStack, redirect_stdout
 from io import StringIO
 import json
 import os
+from pathlib import Path
 import sys
+from tempfile import TemporaryDirectory
 import traceback
 import unittest
 from unittest.mock import Mock, patch
@@ -727,24 +729,52 @@ def test_dry_run_failure_leaves_messages_unread() -> None:
     assert events == []
 
 
+def test_authenticate_requires_authorize_for_missing_token_cache() -> None:
+    with TemporaryDirectory() as temporary_directory:
+        token_cache_path = Path(temporary_directory) / "google_oauth_token.json"
+        with patch.object(
+            transcript_sync, "InstalledAppFlow"
+        ) as installed_app_flow_mock:
+            with patch.dict(
+                os.environ,
+                {"GOOGLE_OAUTH_TOKEN_CACHE_PATH": str(token_cache_path)},
+                clear=True,
+            ):
+                with unittest.TestCase().assertRaises(RuntimeError) as error_context:
+                    transcript_sync.authenticate()
+
+    assert str(token_cache_path) in str(error_context.exception)
+    assert "transcript_sync.py authorize" in str(error_context.exception)
+    installed_app_flow_mock.assert_not_called()
+
+
 def test_command_routing() -> None:
     preview_mock = Mock()
     synchronize_mock = Mock()
+    authorize_mock = Mock()
     with patch.object(transcript_sync, "preview", preview_mock):
         with patch.object(transcript_sync, "synchronize", synchronize_mock):
-            with patch.object(sys, "argv", ["transcript_sync.py", "preview", "Folder"]):
-                transcript_sync.main()
-            with patch.object(sys, "argv", ["transcript_sync.py", "sync", "Folder"]):
-                transcript_sync.main()
-            with patch.object(
-                sys, "argv", ["transcript_sync.py", "sync", "--dry-run", "Folder"]
-            ):
-                transcript_sync.main()
+            with patch.object(transcript_sync, "authorize", authorize_mock):
+                with patch.object(
+                    sys, "argv", ["transcript_sync.py", "preview", "Folder"]
+                ):
+                    transcript_sync.main()
+                with patch.object(
+                    sys, "argv", ["transcript_sync.py", "sync", "Folder"]
+                ):
+                    transcript_sync.main()
+                with patch.object(
+                    sys, "argv", ["transcript_sync.py", "sync", "--dry-run", "Folder"]
+                ):
+                    transcript_sync.main()
+                with patch.object(sys, "argv", ["transcript_sync.py", "authorize"]):
+                    transcript_sync.main()
     preview_mock.assert_called_once_with("Folder")
     assert synchronize_mock.call_args_list == [
         unittest.mock.call("Folder", dry_run=False),
         unittest.mock.call("Folder", dry_run=True),
     ]
+    authorize_mock.assert_called_once_with()
 
 
 def main() -> None:
@@ -759,6 +789,7 @@ def main() -> None:
     test_post_rejects_combined_basic_and_bearer_authentication_before_network()
     test_dry_run_is_read_only_and_needs_no_endpoint_configuration()
     test_dry_run_failure_leaves_messages_unread()
+    test_authenticate_requires_authorize_for_missing_token_cache()
     test_command_routing()
 
 
