@@ -107,6 +107,9 @@ flags, and does not require endpoint configuration.
 each submission, posts the rendered content, then marks that message as read. No
 `--push` flag is needed.
 
+Both `sync` forms print `Done.` when they finish, including when there was nothing
+unread. A log that ends without it means the run died partway.
+
 The endpoint timeout is fixed at 120 seconds. If document extraction, submission,
 or marking a message read fails, that message remains unread. A timeout or a failure
 after the endpoint receives the request can therefore cause a later run to submit a

@@ -459,6 +459,7 @@ def test_synchronize_delivery_order() -> None:
     assert output == (
         "Processing 2026-01-01: Synthetic meeting\n"
         "Processing 2026-01-01: Synthetic meeting\n"
+        "Done.\n"
     )
     assert opener.timeouts == [120, 120]
     assert request.full_url == "https://example.test/stavrobot/chat"
@@ -683,7 +684,7 @@ def test_dry_run_is_read_only_and_needs_no_endpoint_configuration() -> None:
     assert events == []
     post_payload_mock.assert_not_called()
     message = transcript_sync.chat_request(payload())["message"]
-    assert output.getvalue() == f"{message}\n---\n{message}\n"
+    assert output.getvalue() == f"{message}\n---\n{message}\nDone.\n"
 
 
 def test_dry_run_failure_leaves_messages_unread() -> None:
@@ -727,6 +728,33 @@ def test_dry_run_failure_leaves_messages_unread() -> None:
     assert mailbox.is_readonly is True
     assert mailbox.seen_message_identifiers == []
     assert events == []
+
+
+def test_empty_mailbox_finishes_without_google_credentials() -> None:
+    events: list[str] = []
+    mailbox = FakeMailbox(events)
+    output = StringIO()
+    create_documents_service_mock = Mock()
+    with ExitStack() as stack:
+        stack.enter_context(
+            patch.object(transcript_sync, "connect_mailbox", return_value=mailbox)
+        )
+        stack.enter_context(
+            patch.object(transcript_sync, "search_messages", return_value=[])
+        )
+        stack.enter_context(
+            patch.object(
+                transcript_sync,
+                "create_documents_service",
+                create_documents_service_mock,
+            )
+        )
+        with redirect_stdout(output):
+            transcript_sync.synchronize("Synthetic folder")
+
+    create_documents_service_mock.assert_not_called()
+    assert output.getvalue() == "Done.\n"
+    assert mailbox.seen_message_identifiers == []
 
 
 def test_authenticate_requires_authorize_for_missing_token_cache() -> None:
@@ -789,6 +817,7 @@ def main() -> None:
     test_post_rejects_combined_basic_and_bearer_authentication_before_network()
     test_dry_run_is_read_only_and_needs_no_endpoint_configuration()
     test_dry_run_failure_leaves_messages_unread()
+    test_empty_mailbox_finishes_without_google_credentials()
     test_authenticate_requires_authorize_for_missing_token_cache()
     test_command_routing()
 

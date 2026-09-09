@@ -510,29 +510,32 @@ def synchronize(folder_name: str, dry_run: bool = False) -> None:
     mailbox = connect_mailbox()
     select_mailbox(mailbox, folder_name, readonly=dry_run)
     message_identifiers = sorted_message_identifiers(search_messages(mailbox, "UNSEEN"))
-    if not message_identifiers:
-        mailbox.logout()
-        return
-
-    documents_service = create_documents_service()
-    for message_number, message_identifier in enumerate(message_identifiers):
-        message = fetch_message(mailbox, message_identifier)
-        document_identifier = first_document_identifier(message)
-        document = fetch_document(documents_service, document_identifier)
-        extracted_sections = extract_sections(document)
-        request_payload = chat_request(extracted_sections)
-        if dry_run:
-            if message_number:
-                print("---")
-            print(request_payload["message"])
-        else:
-            print(
-                f"Processing {extracted_sections['date']}: {extracted_sections['title']}",
-                flush=True,
-            )
-            post_payload(request_payload)
-            mark_message_seen(mailbox, message_identifier)
+    # Authorizing only when there is mail keeps an empty run from needing the
+    # Google credentials at all.
+    if message_identifiers:
+        documents_service = create_documents_service()
+        for message_number, message_identifier in enumerate(message_identifiers):
+            message = fetch_message(mailbox, message_identifier)
+            document_identifier = first_document_identifier(message)
+            document = fetch_document(documents_service, document_identifier)
+            extracted_sections = extract_sections(document)
+            request_payload = chat_request(extracted_sections)
+            if dry_run:
+                if message_number:
+                    print("---")
+                print(request_payload["message"])
+            else:
+                print(
+                    f"Processing {extracted_sections['date']}: "
+                    f"{extracted_sections['title']}",
+                    flush=True,
+                )
+                post_payload(request_payload)
+                mark_message_seen(mailbox, message_identifier)
     mailbox.logout()
+    # Printed on every path that completes, so its absence in the log means the
+    # run died rather than finished with nothing to do.
+    print("Done.")
 
 
 def command_arguments() -> argparse.Namespace:
