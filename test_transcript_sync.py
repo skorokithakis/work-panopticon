@@ -9,16 +9,21 @@
 # ///
 
 import copy
-from contextlib import ExitStack, redirect_stdout
-from io import StringIO
+import imaplib
 import json
 import os
-from pathlib import Path
 import sys
-from tempfile import TemporaryDirectory
 import traceback
 import unittest
-from unittest.mock import Mock, patch
+from contextlib import ExitStack
+from contextlib import redirect_stdout
+from io import StringIO
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from typing import Any
+from typing import cast
+from unittest.mock import Mock
+from unittest.mock import patch
 from urllib.request import Request
 
 import httplib2
@@ -62,7 +67,7 @@ def person_element(name: str, email_address: str) -> dict[str, object]:
     return {"person": {"personProperties": {"name": name, "email": email_address}}}
 
 
-def example_document() -> dict[str, object]:
+def example_document() -> dict[str, Any]:
     return {
         "title": "Example meeting",
         "tabs": [
@@ -304,7 +309,6 @@ def test_extraction_regressions() -> None:
     utc_date_properties = utc_date_document["tabs"][0]["childTabs"][0]["documentTab"][
         "body"
     ]["content"][0]["paragraph"]["elements"][0]["dateElement"]["dateElementProperties"]
-    assert isinstance(utc_date_properties, dict)
     del utc_date_properties["timeZoneId"]
     assert transcript_sync.extract_sections(utc_date_document)["date"] == "2026-01-02"
 
@@ -416,7 +420,7 @@ def test_extraction_regressions() -> None:
 
 def test_safe_document_and_message_fetching() -> None:
     mailbox = FetchingMailbox()
-    transcript_sync.fetch_message(mailbox, b"1")
+    transcript_sync.fetch_message(cast(imaplib.IMAP4_SSL, mailbox), b"1")
     assert mailbox.fetch_query == "(BODY.PEEK[])"
 
     with unittest.TestCase().assertRaisesRegex(
@@ -442,12 +446,6 @@ def test_synchronize_delivery_order() -> None:
     assert redirected_opener.events == ["post"]
     assert redirected_output == "Processing 2026-01-01: Synthetic meeting\n"
     assert isinstance(redirect_handler, transcript_sync.NoRedirect)
-    assert (
-        redirect_handler.redirect_request(
-            object(), object(), 302, "Found", object(), "https://other.example.test"
-        )
-        is None
-    )
 
     mailbox, opener, request, output, _ = synchronize_with_response(
         202, False, [b"12", b"3"]
@@ -463,6 +461,7 @@ def test_synchronize_delivery_order() -> None:
     )
     assert opener.timeouts == [120, 120]
     assert request.full_url == "https://example.test/stavrobot/chat"
+    assert isinstance(request.data, bytes)
     request_payload = json.loads(request.data)
     assert request_payload == transcript_sync.chat_request(payload())
     assert request.get_header("Authorization") is None

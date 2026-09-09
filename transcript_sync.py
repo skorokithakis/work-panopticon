@@ -12,28 +12,32 @@
 # Only non-dry-run sync requires STAVROBOT_BASE_URL; dry runs need no endpoint
 # configuration. Optionally set GOOGLE_OAUTH_TOKEN_CACHE_PATH and
 # TRANSCRIPT_ENDPOINT_TOKEN.
-
 import argparse
 import base64
-from datetime import datetime
 import email
-from email.message import Message
 import html
 import imaplib
 import json
 import os
-from pathlib import Path
 import re
 import ssl
+from datetime import datetime
+from email.message import Message
+from pathlib import Path
 from typing import cast
-from urllib.parse import unquote, urlsplit
-from urllib.request import HTTPRedirectHandler, Request, build_opener
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+from urllib.parse import unquote
+from urllib.parse import urlsplit
+from urllib.request import build_opener
+from urllib.request import HTTPRedirectHandler
+from urllib.request import Request
+from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfoNotFoundError
 
 from google.auth.transport.requests import Request as GoogleRequest
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
-from googleapiclient.discovery import Resource, build
+from googleapiclient.discovery import build
+from googleapiclient.discovery import Resource
 from googleapiclient.errors import HttpError
 
 DOCUMENTS_SCOPE = "https://www.googleapis.com/auth/documents.readonly"
@@ -97,8 +101,10 @@ def sorted_message_identifiers(message_identifiers: list[bytes]) -> list[bytes]:
 def fetch_message(mailbox: imaplib.IMAP4_SSL, message_identifier: bytes) -> Message:
     # Fetching without BODY.PEEK causes Gmail to set \Seen before the payload
     # has reached the endpoint, breaking the mail flag's retry guarantee.
+    # imaplib's stub is stricter than the runtime, which accepts byte identifiers.
     response_status, fetched_message = mailbox.fetch(
-        message_identifier, "(BODY.PEEK[])"
+        message_identifier,  # type: ignore[arg-type]
+        "(BODY.PEEK[])",
     )
     if response_status != "OK":
         raise RuntimeError("Unable to fetch message")
@@ -110,7 +116,12 @@ def fetch_message(mailbox: imaplib.IMAP4_SSL, message_identifier: bytes) -> Mess
 
 
 def mark_message_seen(mailbox: imaplib.IMAP4_SSL, message_identifier: bytes) -> None:
-    response_status, _ = mailbox.store(message_identifier, "+FLAGS", r"(\Seen)")
+    # imaplib's stub is stricter than the runtime, which accepts byte identifiers.
+    response_status, _ = mailbox.store(
+        message_identifier,  # type: ignore[arg-type]
+        "+FLAGS",
+        r"(\Seen)",
+    )
     if response_status != "OK":
         raise RuntimeError("Unable to mark message as read")
 
@@ -126,6 +137,7 @@ def first_document_identifier(message: Message) -> str:
         payload = part.get_payload(decode=True)
         if payload is None:
             continue
+        assert isinstance(payload, bytes)
         part_text = html.unescape(payload.decode(part.get_content_charset() or "utf-8"))
         document_match = DOCUMENT_LINK_PATTERN.search(part_text)
         if document_match is not None:
@@ -363,7 +375,10 @@ def extract_invitees(paragraphs: list[dict[str, object]]) -> list[dict[str, str]
     person_chip_paragraph = next(
         paragraph
         for paragraph in paragraphs
-        if any("person" in element for element in paragraph["elements"])
+        if any(
+            "person" in element
+            for element in cast(list[dict[str, object]], paragraph["elements"])
+        )
     )
     paragraph_style = required_mapping(
         person_chip_paragraph.get("paragraphStyle"), "person chip paragraph style"

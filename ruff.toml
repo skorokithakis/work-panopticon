@@ -1,0 +1,6 @@
+[lint]
+extend-select = ["I"]
+
+[lint.isort]
+force-single-line = true
+order-by-type = false
