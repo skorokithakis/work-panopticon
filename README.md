@@ -13,8 +13,10 @@ only required section. In that tab the document must have:
 
 - A non-empty document title.
 - Exactly one Google Docs date element, which becomes the meeting date.
-- Exactly one non-bulleted, normal-text paragraph containing the invitees as Google
-  Docs person chips. Every chip must have a name and email address.
+- At most one non-bulleted, normal-text paragraph containing the invitees as Google
+  Docs person chips. Every chip that is present must have a name and email address.
+  Ad-hoc meetings may have no invitees; in that case the chat message omits the
+  `Invitees` block entirely.
 
 The `Decisions`, `Next Steps`, and `Details` sections are optional, and any section
 may have no body text. A document is rejected when a named section appears more

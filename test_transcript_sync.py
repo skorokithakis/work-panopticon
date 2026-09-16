@@ -139,6 +139,10 @@ def example_document() -> dict[str, Any]:
     }
 
 
+def summary_tab_content(document: dict[str, Any]) -> list[Any]:
+    return document["tabs"][0]["childTabs"][0]["documentTab"]["body"]["content"]
+
+
 class FetchingMailbox:
     def __init__(self) -> None:
         self.fetch_query: str | None = None
@@ -509,6 +513,78 @@ def test_extraction_regressions() -> None:
     duplicate_details_content.append(paragraph("Details\n", "HEADING_3"))
     with unittest.TestCase().assertRaisesRegex(RuntimeError, "details heading"):
         transcript_sync.extract_sections(duplicate_details_document)
+
+
+def test_absent_invitees_and_chip_validation() -> None:
+    ad_hoc_document = example_document()
+    # An ad-hoc meeting keeps the "Invitees" label but has no person chip, so the
+    # paragraph is reduced to its text run.
+    summary_tab_content(ad_hoc_document)[1]["paragraph"]["elements"] = [
+        {"textRun": {"content": "Invitees\n"}}
+    ]
+
+    ad_hoc_sections = transcript_sync.extract_sections(ad_hoc_document)
+    assert ad_hoc_sections["invitees"] == []
+    assert ad_hoc_sections["title"] == "Example meeting"
+    assert ad_hoc_sections["date"] == "2026-01-01"
+    assert ad_hoc_sections["summary"] == "Concise overview\n- First point"
+    assert ad_hoc_sections["next_steps"] == "- Send follow-up"
+    assert ad_hoc_sections["details"] == "Topic narrative\n- Follow-up discussion"
+
+    ad_hoc_payload = payload()
+    ad_hoc_payload["invitees"] = []
+    assert transcript_sync.chat_request(ad_hoc_payload)["message"] == (
+        "Here is the data that was parsed from a recent meeting:\n\n"
+        "Title: Synthetic meeting\n"
+        "Date: 2026-01-01\n\n"
+        "Summary:\nSynthetic summary\n\n"
+        "Decisions:\nSynthetic decision\n\n"
+        "Next steps:\nSynthetic next step\n\n"
+        "Details:\nSynthetic details"
+    )
+
+    multiple_chip_paragraphs_document = copy.deepcopy(example_document())
+    summary_tab_content(multiple_chip_paragraphs_document).insert(
+        2,
+        {
+            "paragraph": {
+                "paragraphStyle": {"namedStyleType": "NORMAL_TEXT"},
+                "elements": [person_element("Second attendee", "second@example.test")],
+            }
+        },
+    )
+    with unittest.TestCase().assertRaisesRegex(RuntimeError, "exactly one paragraph"):
+        transcript_sync.extract_sections(multiple_chip_paragraphs_document)
+
+    invalid_style_document = copy.deepcopy(example_document())
+    summary_tab_content(invalid_style_document)[1]["paragraph"]["paragraphStyle"][
+        "namedStyleType"
+    ] = "HEADING_3"
+    with unittest.TestCase().assertRaisesRegex(
+        RuntimeError, "non-bulleted normal-text"
+    ):
+        transcript_sync.extract_sections(invalid_style_document)
+
+    bulleted_chip_document = copy.deepcopy(example_document())
+    summary_tab_content(bulleted_chip_document)[1]["paragraph"]["bullet"] = {}
+    with unittest.TestCase().assertRaisesRegex(
+        RuntimeError, "non-bulleted normal-text"
+    ):
+        transcript_sync.extract_sections(bulleted_chip_document)
+
+    missing_name_document = copy.deepcopy(example_document())
+    summary_tab_content(missing_name_document)[1]["paragraph"]["elements"][1]["person"][
+        "personProperties"
+    ]["name"] = ""
+    with unittest.TestCase().assertRaisesRegex(RuntimeError, "person name"):
+        transcript_sync.extract_sections(missing_name_document)
+
+    missing_email_document = copy.deepcopy(example_document())
+    del summary_tab_content(missing_email_document)[1]["paragraph"]["elements"][1][
+        "person"
+    ]["personProperties"]["email"]
+    with unittest.TestCase().assertRaisesRegex(RuntimeError, "person email"):
+        transcript_sync.extract_sections(missing_email_document)
 
 
 def test_safe_document_and_message_fetching() -> None:
@@ -976,6 +1052,7 @@ def test_command_routing() -> None:
 
 def main() -> None:
     test_extraction_regressions()
+    test_absent_invitees_and_chip_validation()
     test_safe_document_and_message_fetching()
     test_synchronize_delivery_order()
     test_synchronize_leaves_invalid_documents_unread()

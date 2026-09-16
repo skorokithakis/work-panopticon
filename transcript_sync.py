@@ -389,6 +389,12 @@ def extract_invitees(paragraphs: list[dict[str, object]]) -> list[dict[str, str]
         if person_chips:
             person_chip_paragraphs.append(person_chips)
 
+    if not person_chip_paragraphs:
+        # Ad-hoc meetings may legitimately have no invitees, so a Summary tab
+        # with zero person-chip paragraphs yields an empty list. Narrative text
+        # is never scanned for names, because that would infer attendance.
+        return []
+
     if len(person_chip_paragraphs) != 1:
         raise RuntimeError("Expected person chips in exactly one paragraph")
 
@@ -485,15 +491,18 @@ def extract_sections(document: dict[str, object]) -> TranscriptPayload:
 
 def chat_request(payload: TranscriptPayload) -> ChatRequest:
     invitees = cast(list[dict[str, str]], payload["invitees"])
-    message_parts = [
-        CHAT_INTRODUCTION,
-        f"Title: {payload['title']}\n"
-        f"Date: {payload['date']}\n"
-        "Invitees:\n"
-        + "\n".join(
-            f"- {invitee['name']} <{invitee['email']}>" for invitee in invitees
-        ),
+    metadata_lines = [
+        f"Title: {payload['title']}",
+        f"Date: {payload['date']}",
     ]
+    # Ad-hoc meetings have no invitees, so the block is omitted entirely rather
+    # than sending a bare "Invitees:" label with nothing under it.
+    if invitees:
+        metadata_lines.append("Invitees:")
+        metadata_lines.extend(
+            f"- {invitee['name']} <{invitee['email']}>" for invitee in invitees
+        )
+    message_parts = [CHAT_INTRODUCTION, "\n".join(metadata_lines)]
     for label, section_key in SECTION_LABELS:
         section_body = payload[section_key]
         if section_body:
