@@ -14,12 +14,11 @@ including nested tabs, but accepts a document only when exactly one tab contains
 - Exactly one Google Docs date element, which becomes the meeting date.
 - Exactly one non-bulleted, normal-text paragraph containing the invitees as Google
   Docs person chips. Every chip must have a name and email address.
-- Exactly one heading each named `Summary` and `Next Steps`, and at most one named
-  `Decisions`.
+- At most one heading each named `Summary`, `Decisions`, and `Next Steps`.
 
 Headings are matched case-insensitively and tolerate trailing punctuation. Content
 under a section continues until the next heading at the same or higher level.
-Sections may be empty. `Decisions` may also be omitted and is sent as an empty
+Sections may be empty, and any section may be omitted and is sent as an empty
 section. Documents that do not meet this format are rejected rather than guessed at.
 
 ## Requirements and Google setup

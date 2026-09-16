@@ -440,10 +440,8 @@ def extract_sections(document: dict[str, object]) -> TranscriptPayload:
         )
 
     for section_key, heading_indices in section_heading_indices.items():
-        if section_key != "decisions" and len(heading_indices) != 1:
-            raise RuntimeError(f"Expected exactly one {section_key} heading")
-        if section_key == "decisions" and len(heading_indices) > 1:
-            raise RuntimeError(f"Expected exactly one {section_key} heading")
+        if len(heading_indices) > 1:
+            raise RuntimeError(f"Expected at most one {section_key} heading")
 
     sections: TranscriptPayload = {
         "title": required_string(document.get("title"), "document title"),

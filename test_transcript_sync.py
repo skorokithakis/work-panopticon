@@ -407,6 +407,33 @@ def test_extraction_regressions() -> None:
     with unittest.TestCase().assertRaisesRegex(RuntimeError, "decisions heading"):
         transcript_sync.extract_sections(duplicate_decisions_document)
 
+    missing_next_steps_document = copy.deepcopy(document)
+    missing_next_steps_content = missing_next_steps_document["tabs"][0]["childTabs"][0][
+        "documentTab"
+    ]["body"]["content"]
+    assert isinstance(missing_next_steps_content, list)
+    missing_next_steps_content[:] = [
+        structural_element
+        for structural_element in missing_next_steps_content
+        if structural_element["paragraph"]["elements"][0]
+        .get("textRun", {})
+        .get("content")
+        != "Next\xa0Steps:\n"
+    ]
+    assert (
+        transcript_sync.extract_sections(missing_next_steps_document)["next_steps"]
+        == ""
+    )
+
+    duplicate_next_steps_document = copy.deepcopy(document)
+    duplicate_next_steps_content = duplicate_next_steps_document["tabs"][0][
+        "childTabs"
+    ][0]["documentTab"]["body"]["content"]
+    assert isinstance(duplicate_next_steps_content, list)
+    duplicate_next_steps_content.append(paragraph("Next\xa0Steps:\n", "HEADING_3"))
+    with unittest.TestCase().assertRaisesRegex(RuntimeError, "next_steps heading"):
+        transcript_sync.extract_sections(duplicate_next_steps_document)
+
     empty_decisions_document = copy.deepcopy(document)
     empty_decisions_content = empty_decisions_document["tabs"][0]["childTabs"][0][
         "documentTab"
