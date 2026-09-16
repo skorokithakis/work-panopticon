@@ -8,18 +8,25 @@ endpoint. It is a standalone Python script run with [uv](https://docs.astral.sh/
 
 Each Gmail message must contain a link to a Google Doc. Panopticon reads all tabs,
 including nested tabs, but accepts a document only when exactly one tab contains a
-`Summary` heading. In that tab it requires:
+`Summary` heading. That heading is the anchor that selects the tab, and it is the
+only required section. In that tab the document must have:
 
 - A non-empty document title.
 - Exactly one Google Docs date element, which becomes the meeting date.
 - Exactly one non-bulleted, normal-text paragraph containing the invitees as Google
   Docs person chips. Every chip must have a name and email address.
-- At most one heading each named `Summary`, `Decisions`, and `Next Steps`.
+
+The `Decisions`, `Next Steps`, and `Details` sections are optional, and any section
+may have no body text. A document is rejected when a named section appears more
+than once, including a second `Summary`.
 
 Headings are matched case-insensitively and tolerate trailing punctuation. Content
-under a section continues until the next heading at the same or higher level.
-Sections may be empty, and any section may be omitted and is sent as an empty
-section. Documents that do not meet this format are rejected rather than guessed at.
+under a section continues until the next heading at the same or higher level. The
+`Details` narrative ends at the first paragraph whose stripped text starts with
+`You should review Gemini's notes`, which skips Gemini's trailing footer; the other
+sections are not affected by that marker. Empty sections are omitted from the chat
+message instead of being sent as a bare label. Documents that do not meet this
+format are rejected rather than guessed at.
 
 ## Requirements and Google setup
 

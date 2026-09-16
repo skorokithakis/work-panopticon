@@ -48,7 +48,22 @@ SECTION_KEYS = {
     "summary": "summary",
     "decisions": "decisions",
     "next steps": "next_steps",
+    "details": "details",
 }
+# Chat label and render order for each section body, because SECTION_KEYS keys
+# are lowercased and cannot supply the source capitalization.
+SECTION_LABELS = (
+    ("Summary", "summary"),
+    ("Decisions", "decisions"),
+    ("Next steps", "next_steps"),
+    ("Details", "details"),
+)
+# Gemini's generated notes close the Details narrative with a footer asking the
+# reader to review the notes. Formatting cannot reliably mark that boundary,
+# because italic or gray text also occurs in legitimate content, so matching the
+# literal wording avoids dropping real paragraphs. If Gemini rewords the footer,
+# its text flows into Details until this marker is updated.
+DETAILS_FOOTER_MARKER = "You should review Gemini's notes"
 TranscriptPayload = dict[str, str | list[dict[str, str]]]
 ChatRequest = dict[str, str | bool]
 CHAT_INTRODUCTION = "Here is the data that was parsed from a recent meeting:"
@@ -285,7 +300,10 @@ def heading_level(paragraph: dict[str, object]) -> int | None:
 
 
 def section_text(
-    paragraphs: list[dict[str, object]], heading_index: int, section_heading_level: int
+    paragraphs: list[dict[str, object]],
+    heading_index: int,
+    section_heading_level: int,
+    stop_marker: str | None = None,
 ) -> str:
     section_paragraphs: list[str] = []
     for paragraph in paragraphs[heading_index + 1 :]:
@@ -299,6 +317,8 @@ def section_text(
         text = paragraph_text(paragraph).strip()
         if not text:
             continue
+        if stop_marker is not None and text.startswith(stop_marker):
+            break
         if "bullet" in paragraph:
             text = f"- {text}"
         section_paragraphs.append(text)
@@ -453,29 +473,33 @@ def extract_sections(document: dict[str, object]) -> TranscriptPayload:
             sections[section_key] = ""
             continue
         paragraph_index, section_heading_level = heading_indices[0]
+        stop_marker = DETAILS_FOOTER_MARKER if section_key == "details" else None
         sections[section_key] = section_text(
-            summary_tab_paragraphs, paragraph_index, section_heading_level
+            summary_tab_paragraphs,
+            paragraph_index,
+            section_heading_level,
+            stop_marker=stop_marker,
         )
     return sections
 
 
 def chat_request(payload: TranscriptPayload) -> ChatRequest:
     invitees = cast(list[dict[str, str]], payload["invitees"])
-    return {
-        "message": "\n\n".join(
-            (
-                CHAT_INTRODUCTION,
-                f"Title: {payload['title']}\n"
-                f"Date: {payload['date']}\n"
-                "Invitees:\n"
-                + "\n".join(
-                    f"- {invitee['name']} <{invitee['email']}>" for invitee in invitees
-                )
-                + f"\n\nSummary:\n{payload['summary']}"
-                + f"\n\nDecisions:\n{payload['decisions']}"
-                + f"\n\nNext steps:\n{payload['next_steps']}",
-            )
+    message_parts = [
+        CHAT_INTRODUCTION,
+        f"Title: {payload['title']}\n"
+        f"Date: {payload['date']}\n"
+        "Invitees:\n"
+        + "\n".join(
+            f"- {invitee['name']} <{invitee['email']}>" for invitee in invitees
         ),
+    ]
+    for label, section_key in SECTION_LABELS:
+        section_body = payload[section_key]
+        if section_body:
+            message_parts.append(f"{label}:\n{section_body}")
+    return {
+        "message": "\n\n".join(message_parts),
         "source": "panopticon",
         "sender": "panopticon",
         "async": True,

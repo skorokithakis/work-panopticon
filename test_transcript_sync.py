@@ -113,7 +113,18 @@ def example_document() -> dict[str, Any]:
                                 "Send follow-up\n", "NORMAL_TEXT", is_bulleted=True
                             ),
                             paragraph("Details\n", "HEADING_3"),
-                            paragraph("This must not be output\n", "NORMAL_TEXT"),
+                            paragraph("Topic narrative\n", "NORMAL_TEXT"),
+                            paragraph(
+                                "Follow-up discussion\n",
+                                "NORMAL_TEXT",
+                                is_bulleted=True,
+                            ),
+                            paragraph(
+                                "You should review Gemini's notes to make sure "
+                                "they're accurate.\n",
+                                "NORMAL_TEXT",
+                            ),
+                            paragraph("Further narrative\n", "NORMAL_TEXT"),
                         ]
                     )
                 ],
@@ -217,6 +228,7 @@ def payload() -> dict[str, str | list[dict[str, str]]]:
         "summary": "Synthetic summary",
         "decisions": "Synthetic decision",
         "next_steps": "Synthetic next step",
+        "details": "Synthetic details",
     }
 
 
@@ -299,6 +311,7 @@ def test_extraction_regressions() -> None:
         "summary",
         "decisions",
         "next_steps",
+        "details",
     ]
     assert sections == {
         "title": "Example meeting",
@@ -307,6 +320,7 @@ def test_extraction_regressions() -> None:
         "summary": "Concise overview\n- First point",
         "decisions": "Approve the proposal",
         "next_steps": "- Send follow-up",
+        "details": "Topic narrative\n- Follow-up discussion",
     }
 
     utc_date_document = copy.deepcopy(document)
@@ -448,6 +462,53 @@ def test_extraction_regressions() -> None:
         != "Approve the proposal\n"
     ]
     assert transcript_sync.extract_sections(empty_decisions_document)["decisions"] == ""
+
+    no_footer_document = copy.deepcopy(document)
+    no_footer_content = no_footer_document["tabs"][0]["childTabs"][0]["documentTab"][
+        "body"
+    ]["content"]
+    assert isinstance(no_footer_content, list)
+    no_footer_content[:] = [
+        structural_element
+        for structural_element in no_footer_content
+        if not structural_element["paragraph"]["elements"][0]
+        .get("textRun", {})
+        .get("content", "")
+        .startswith("You should review Gemini's notes")
+    ]
+    assert (
+        transcript_sync.extract_sections(no_footer_document)["details"]
+        == "Topic narrative\n- Follow-up discussion\nFurther narrative"
+    )
+
+    missing_details_document = copy.deepcopy(document)
+    missing_details_content = missing_details_document["tabs"][0]["childTabs"][0][
+        "documentTab"
+    ]["body"]["content"]
+    assert isinstance(missing_details_content, list)
+    details_heading_index = next(
+        index
+        for index, structural_element in enumerate(missing_details_content)
+        if structural_element["paragraph"]["elements"][0]
+        .get("textRun", {})
+        .get("content")
+        == "Details\n"
+    )
+    del missing_details_content[details_heading_index:]
+    missing_details_sections = transcript_sync.extract_sections(
+        missing_details_document
+    )
+    assert missing_details_sections["details"] == ""
+    assert missing_details_sections["next_steps"] == "- Send follow-up"
+
+    duplicate_details_document = copy.deepcopy(document)
+    duplicate_details_content = duplicate_details_document["tabs"][0]["childTabs"][0][
+        "documentTab"
+    ]["body"]["content"]
+    assert isinstance(duplicate_details_content, list)
+    duplicate_details_content.append(paragraph("Details\n", "HEADING_3"))
+    with unittest.TestCase().assertRaisesRegex(RuntimeError, "details heading"):
+        transcript_sync.extract_sections(duplicate_details_document)
 
 
 def test_safe_document_and_message_fetching() -> None:
@@ -624,11 +685,50 @@ def test_chat_request_rendering() -> None:
         "- Example attendee <attendee@example.test>\n\n"
         "Summary:\nSynthetic summary\n\n"
         "Decisions:\nSynthetic decision\n\n"
-        "Next steps:\nSynthetic next step",
+        "Next steps:\nSynthetic next step\n\n"
+        "Details:\nSynthetic details",
         "source": "panopticon",
         "sender": "panopticon",
         "async": True,
     }
+
+    sparse_payload = payload()
+    sparse_payload["decisions"] = ""
+    sparse_payload["next_steps"] = ""
+    sparse_payload["details"] = ""
+    sparse_message = cast(str, transcript_sync.chat_request(sparse_payload)["message"])
+    assert sparse_message == (
+        "Here is the data that was parsed from a recent meeting:\n\n"
+        "Title: Synthetic meeting\n"
+        "Date: 2026-01-01\n"
+        "Invitees:\n"
+        "- Example attendee <attendee@example.test>\n\n"
+        "Summary:\nSynthetic summary"
+    )
+
+    summary_and_details_payload = payload()
+    summary_and_details_payload["decisions"] = ""
+    summary_and_details_payload["next_steps"] = ""
+    summary_and_details_message = cast(
+        str, transcript_sync.chat_request(summary_and_details_payload)["message"]
+    )
+    assert summary_and_details_message.endswith(
+        "Summary:\nSynthetic summary\n\nDetails:\nSynthetic details"
+    )
+
+    empty_sections_payload = payload()
+    for section_key in ("summary", "decisions", "next_steps", "details"):
+        empty_sections_payload[section_key] = ""
+    empty_sections_message = cast(
+        str, transcript_sync.chat_request(empty_sections_payload)["message"]
+    )
+    assert empty_sections_message == (
+        "Here is the data that was parsed from a recent meeting:\n\n"
+        "Title: Synthetic meeting\n"
+        "Date: 2026-01-01\n"
+        "Invitees:\n"
+        "- Example attendee <attendee@example.test>"
+    )
 
 
 def test_post_preserves_optional_bearer_token() -> None:

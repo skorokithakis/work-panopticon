@@ -24,7 +24,7 @@ way unless the script outgrows one file.
 2. Find the first Google Docs link in the message body.
 3. Read the document through the Google Docs API, using a cached OAuth token.
 4. Parse the document into a strict payload: title, date, invitees, and the `Summary`,
-   `Decisions`, and `Next Steps` sections.
+   `Decisions`, `Next Steps`, and `Details` sections.
 5. Render the payload as chat content and POST it to `STAVROBOT_BASE_URL` + `/chat`.
 6. Mark the message read. Any failure before this point leaves the message unread, so
    the next run retries it.
